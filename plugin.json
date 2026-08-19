@@ -1,0 +1,16 @@
+{
+  "id": "@signalsandsorcery/freesound",
+  "displayName": "Freesound",
+  "version": "0.1.0",
+  "description": "Browse freesound.org sounds that match the scene's key and BPM, preview them through the cue, and one-click add them as sampler tracks. One-shots first (loops later). Bring your own Freesound API credentials — search and preview with just an API key, connect via OAuth for original-quality WAV import. License-aware: CC0 + CC BY by default, a license badge on every result, and attribution metadata persisted with every import.",
+  "generatorType": "midi",
+  "main": "index.js",
+  "minHostVersion": "3.7.0",
+  "builtIn": true,
+  "supportedTimeSignatures": "*",
+  "capabilities": {
+    "network": {
+      "allowedHosts": ["freesound.org", "cdn.freesound.org"]
+    }
+  }
+}
