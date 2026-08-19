@@ -88,12 +88,13 @@ export type LicenseBucket = 'cc0' | 'by' | 'by-nc' | 'other';
 
 /**
  * Exact tokens the `license:` filter accepts (Freesound uses display names,
- * not SPDX ids). Spike-confirmable, like the field names above.
+ * not SPDX ids). Spike-verified 2026-08-19: "Attribution NonCommercial" is
+ * camel-C ("Attribution Noncommercial" matches 0 sounds).
  */
 export const LICENSE_FILTER_TOKENS: Record<Exclude<LicenseBucket, 'other'>, string> = {
   cc0: '"Creative Commons 0"',
   by: '"Attribution"',
-  'by-nc': '"Attribution Noncommercial"',
+  'by-nc': '"Attribution NonCommercial"',
 };
 
 /** Classify a sound's `license` value (URL or display name) into a bucket. */

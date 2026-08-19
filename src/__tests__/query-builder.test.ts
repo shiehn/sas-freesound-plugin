@@ -4,6 +4,7 @@ import {
   buildSearchParams,
   defaultQueryText,
   foldModeToTonality,
+  normalizeTonicToSharp,
   type SearchOptions,
 } from '../query-builder';
 
@@ -46,6 +47,24 @@ describe('foldModeToTonality', () => {
   });
 });
 
+describe('normalizeTonicToSharp', () => {
+  it.each([
+    ['Eb', 'D#'],
+    ['Bb', 'A#'],
+    ['Db', 'C#'],
+    ['Gb', 'F#'],
+    ['Ab', 'G#'],
+    ['Cb', 'B'],
+  ] as const)('%s → %s (Freesound is sharps-only)', (flat, sharp) => {
+    expect(normalizeTonicToSharp(flat)).toBe(sharp);
+  });
+
+  it('passes sharps and naturals through', () => {
+    expect(normalizeTonicToSharp('C')).toBe('C');
+    expect(normalizeTonicToSharp('F#')).toBe('F#');
+  });
+});
+
 describe('buildSearchParams — one-shot mode', () => {
   it('one-shot filters: single_event + duration cap + tonality + licenses + wav', () => {
     const params = buildSearchParams(ctx(), opts());
@@ -72,10 +91,18 @@ describe('buildSearchParams — one-shot mode', () => {
     expect(params.filter).not.toContain('tonality');
   });
 
-  it('exotic scene mode falls back to note_name tonic matching', () => {
+  it('exotic scene mode falls back to wildcard note_name tonic matching', () => {
     const params = buildSearchParams(ctx({ mode: 'phrygian dominant', key: 'F#' }), opts());
-    expect(params.filter).toContain('note_name:F#');
+    // Wildcard: note_name values carry the octave ("F#3"), bare tonic matches 0.
+    expect(params.filter).toContain('note_name:F#*');
     expect(params.filter).not.toContain('tonality');
+  });
+
+  it('flat scene keys are normalized to sharps for both filters', () => {
+    expect(buildSearchParams(ctx({ key: 'Eb' }), opts()).filter).toContain('tonality:"D# minor"');
+    expect(
+      buildSearchParams(ctx({ key: 'Bb', mode: 'whole tone' }), opts()).filter
+    ).toContain('note_name:A#*');
   });
 
   it('null context builds chip-only filters', () => {
@@ -112,9 +139,9 @@ describe('buildSearchParams — licenses', () => {
     expect(params.filter).not.toContain('OR');
   });
 
-  it('by-nc opts in explicitly', () => {
+  it('by-nc opts in explicitly (camel-C token — spike-verified)', () => {
     const params = buildSearchParams(ctx(), opts({ licenses: ['cc0', 'by', 'by-nc'] }));
-    expect(params.filter).toContain('"Attribution Noncommercial"');
+    expect(params.filter).toContain('"Attribution NonCommercial"');
   });
 
   it('no license buckets → no license filter at all', () => {

@@ -48,6 +48,27 @@ export const DEFAULT_SEARCH_OPTIONS: SearchOptions = {
 };
 
 /**
+ * Freesound's tonality/note_name vocabulary uses SHARP spellings only
+ * (spike-verified 2026-08-19: tonality:"Eb minor" → 0, "D# minor" → 654).
+ * Scene keys can arrive as flats ('Eb', 'Bb', …) — normalize before
+ * filtering.
+ */
+const FLAT_TO_SHARP: Record<string, string> = {
+  Db: 'C#',
+  Eb: 'D#',
+  Gb: 'F#',
+  Ab: 'G#',
+  Bb: 'A#',
+  Cb: 'B',
+  Fb: 'E',
+};
+
+export function normalizeTonicToSharp(key: string): string {
+  const k = key.trim();
+  return FLAT_TO_SHARP[k] ?? k;
+}
+
+/**
  * Fold the scene's mode into Freesound's binary tonality vocabulary
  * ("<tonic> major|minor"). Exotic modes → null (tonic-only matching).
  */
@@ -101,12 +122,15 @@ export function buildSearchParams(
   }
 
   if (ctx && opts.matchKey && !opts.percussive) {
+    const tonic = normalizeTonicToSharp(ctx.key);
     const tonality = foldModeToTonality(ctx.mode);
     if (tonality) {
-      filters.push(`${FILTER_FIELDS.tonality}:"${ctx.key} ${tonality}"`);
+      filters.push(`${FILTER_FIELDS.tonality}:"${tonic} ${tonality}"`);
     } else {
-      // Exotic mode: match the tonic pitch class only.
-      filters.push(`${FILTER_FIELDS.noteName}:${ctx.key}`);
+      // Exotic mode: match the tonic pitch class only. note_name values
+      // carry the octave ("C4") — spike-verified: bare "C" matches 0,
+      // wildcard "C*" matches every octave.
+      filters.push(`${FILTER_FIELDS.noteName}:${tonic}*`);
     }
   }
 
