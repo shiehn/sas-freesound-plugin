@@ -116,6 +116,9 @@ export const FreesoundPanel: React.FC<PluginUIProps> = ({ host, activeSceneId })
   const [opts, setOpts] = useState<SearchOptions>(DEFAULT_SEARCH_OPTIONS);
   const [results, setResults] = useState<FreesoundSound[]>([]);
   const [resultCount, setResultCount] = useState<number | null>(null);
+  /** Pagination cursor from the last page ('next' URL), null when exhausted. */
+  const [nextUrl, setNextUrl] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const seededSceneRef = useRef<string | null>(null);
@@ -253,6 +256,7 @@ export const FreesoundPanel: React.FC<PluginUIProps> = ({ host, activeSceneId })
         const page = await client.search(params, apiKey);
         setResults(page.results);
         setResultCount(page.count);
+        setNextUrl(page.next);
       } catch (err: unknown) {
         if (err instanceof FreesoundApiError) {
           setSearchError(err.message);
@@ -266,6 +270,28 @@ export const FreesoundPanel: React.FC<PluginUIProps> = ({ host, activeSceneId })
     },
     [host, client, activeSceneId, freeText, opts, refreshStatus]
   );
+
+  /** Follow the API's `next` cursor and APPEND (dedupe by id — page drift). */
+  const loadMore = useCallback(async (): Promise<void> => {
+    const apiKey = apiKeyRef.current;
+    if (!apiKey || !nextUrl || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const page = await client.getPage(nextUrl, apiKey);
+      setResults((prev) => {
+        const seen = new Set(prev.map((s) => s.id));
+        return [...prev, ...page.results.filter((s) => !seen.has(s.id))];
+      });
+      setResultCount(page.count);
+      setNextUrl(page.next);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setSearchError(msg);
+      if (err instanceof FreesoundApiError && err.kind === 'auth') await refreshStatus();
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [client, nextUrl, loadingMore, refreshStatus]);
 
   // Scene-aware seed + auto-search: once per scene, AFTER the credential
   // status (and thus the API key ref) has loaded — keying on `status` avoids
@@ -668,7 +694,11 @@ export const FreesoundPanel: React.FC<PluginUIProps> = ({ host, activeSceneId })
           </div>
           {searchError && <span style={S.error} data-testid="freesound-search-error">{searchError}</span>}
           {resultCount !== null && !searchError && (
-            <span style={S.muted}>{resultCount} sounds</span>
+            <span style={S.muted} data-testid="freesound-result-count">
+              {results.length < resultCount
+                ? `showing ${results.length} of ${resultCount} sounds`
+                : `${resultCount} sounds`}
+            </span>
           )}
 
           <div data-testid="freesound-results">
@@ -708,6 +738,18 @@ export const FreesoundPanel: React.FC<PluginUIProps> = ({ host, activeSceneId })
               );
             })}
           </div>
+
+          {nextUrl && !searchError && results.length > 0 && (
+            <button
+              type="button"
+              style={{ ...S.buttonSecondary, alignSelf: 'center', ...(loadingMore ? S.buttonDisabled : {}) }}
+              disabled={loadingMore}
+              onClick={() => void loadMore()}
+              data-testid="freesound-load-more"
+            >
+              {loadingMore ? 'Loading…' : 'Load more'}
+            </button>
+          )}
         </div>
       )}
 

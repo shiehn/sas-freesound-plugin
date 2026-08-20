@@ -177,6 +177,57 @@ describe('FreesoundPanel', () => {
     expect(host.createTrack as AnyMock).not.toHaveBeenCalled();
   });
 
+  it('paginates: Load more follows the next cursor, appends, dedupes, hides when exhausted', async () => {
+    const mkSound = (id: number): Record<string, unknown> => ({
+      id,
+      name: `Sound ${id}`,
+      tags: [],
+      license: 'Creative Commons 0',
+      username: 'maker',
+      duration: 0.3,
+      type: 'wav',
+      previews: { 'preview-hq-mp3': `https://cdn.freesound.org/previews/${id}.mp3` },
+    });
+    const page1 = {
+      count: 3,
+      next: 'https://freesound.org/apiv2/search/?page=2&query=kick',
+      previous: null,
+      results: [mkSound(1), mkSound(2)],
+    };
+    // Page 2 repeats id 2 (page drift) — must be deduped.
+    const page2 = { count: 3, next: null, previous: 'x', results: [mkSound(2), mkSound(3)] };
+    const httpRequest = jest.fn() as AnyMock;
+    httpRequest
+      .mockResolvedValueOnce({ status: 200, statusText: 'OK', headers: {}, body: JSON.stringify(page1) })
+      .mockResolvedValueOnce({ status: 200, statusText: 'OK', headers: {}, body: JSON.stringify(page2) });
+    const host = makeMockHost({
+      credentialGetStatus: jest.fn(async () => ({ state: 'key-only', profileFields: ['api_key'] })),
+      credentialGetProfile: jest.fn(async () => ({ api_key: 'K' })),
+      httpRequest,
+    });
+    renderPanel(host);
+
+    await waitFor(() => expect(screen.getByTestId('freesound-result-1')).toBeInTheDocument());
+    expect(screen.getByTestId('freesound-result-count')).toHaveTextContent('showing 2 of 3 sounds');
+
+    fireEvent.click(screen.getByTestId('freesound-load-more'));
+    // The client's politeness throttle (~1.1s between requests) applies to
+    // the cursor fetch too — give the waitFor headroom past it.
+    await waitFor(() => expect(screen.getByTestId('freesound-result-3')).toBeInTheDocument(), {
+      timeout: 4000,
+    });
+
+    // The cursor URL was followed with Token auth.
+    const secondCall = httpRequest.mock.calls[1][0] as { url: string; headers: Record<string, string> };
+    expect(secondCall.url).toBe(page1.next);
+    expect(secondCall.headers.Authorization).toBe('Token K');
+
+    // Deduped: id 2 appears once; all 3 shown; button gone (next=null).
+    expect(screen.getAllByTestId('freesound-result-2')).toHaveLength(1);
+    expect(screen.getByTestId('freesound-result-count')).toHaveTextContent('3 sounds');
+    expect(screen.queryByTestId('freesound-load-more')).toBeNull();
+  });
+
   it('Add without OAuth prompts to connect instead of importing preview quality', async () => {
     const sound = {
       id: 11,
